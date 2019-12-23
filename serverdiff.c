@@ -29,6 +29,7 @@
 #define TRANS_ID 3
 #define KE  4
 #define NONCE 10
+#define VENDOR_ID 55
 //Identification (ID)            5
 
 
@@ -268,8 +269,7 @@ unsigned char * MM_R1_state(unsigned char *data, unsigned int size,struct isakmp
 	struct isakmp_attribute isk_att;
 	struct isakmp_attribute_node *isk_attp;
 	struct isakmp_generic_payload isk_generic;
-	struct isakmp_nonce isk_nonce;
-	struct isakmp_key_exchange isk_keyex;
+
 
 	unsigned int next_payload; // ISAKMP header has to have at least 1 SA
 	unsigned int position=0;
@@ -477,13 +477,53 @@ unsigned char * MM_R1_state(unsigned char *data, unsigned int size,struct isakmp
 
 }
 
-unsigned char * MM_R2_state(){
+unsigned char * MM_R2_state(unsigned char *data, unsigned int size,struct isakmp_hdr isk_hdr){
 
+	struct isakmp_nonce isk_nonce;
+	struct isakmp_key_exchange isk_keyex;
+	
+	unsigned int next_payload;
+	next_payload = isk_hdr.isa_np;
+		// THIS CODE MUST BE IN A DISTINCT FUNCTION FOR MM_R1
+	while(next_payload!=0){
+	
+		switch(next_payload){
+
+			case KE:
+				memcpy((unsigned char*)&isk_keyex.isk_hdr_generic,data+(sizeof(struct isakmp_hdr)),sizeof(struct isakmp_generic_payload));
+				isk_keyex.isakey_data = (unsigned char *) malloc(ntohs(isk_keyex.isk_hdr_generic.isagen_length) - (sizeof(struct isakmp_generic_payload)));
+				
+				memcpy((unsigned char*)isk_keyex.isakey_data,data+(sizeof(struct isakmp_hdr))+(sizeof(struct isakmp_generic_payload)), ntohs(isk_keyex.isk_hdr_generic.isagen_length) - (sizeof(struct isakmp_generic_payload)));
+				printf("\n");
+				printf("KE :\n");
+				printPayload(isk_keyex.isakey_data, ntohs(isk_keyex.isk_hdr_generic.isagen_length) - (sizeof(struct isakmp_generic_payload)));
+				//
+				next_payload = ntohs(isk_keyex.isk_hdr_generic.isagen_np);
+				state = MM_R2;
+			case NONCE:
+				memcpy((unsigned char*)&isk_nonce.isk_hdr_generic,data+(sizeof(struct isakmp_hdr))+ntohs(isk_keyex.isk_hdr_generic.isagen_length),sizeof(struct isakmp_generic_payload));
+				isk_nonce.isan_data = (unsigned char *) malloc(ntohs(isk_nonce.isk_hdr_generic.isagen_length) - (sizeof(struct isakmp_generic_payload)));
+				
+				memcpy((unsigned char*)isk_nonce.isan_data,data+(sizeof(struct isakmp_hdr))+ntohs(isk_keyex.isk_hdr_generic.isagen_length)+sizeof(struct isakmp_generic_payload), ntohs(isk_nonce.isk_hdr_generic.isagen_length) - (sizeof(struct isakmp_generic_payload)));
+				//memcpy((unsigned char*)&isk_sa,data+(sizeof(isk_hdr)),sizeof(isk_sa));
+				printf("DEBUG NONCE LENGTH %04X\n", ntohs(isk_nonce.isk_hdr_generic.isagen_length));
+				//isk_nonce
+				printf("NONCE \n");
+				printPayload(isk_nonce.isan_data, ntohs(isk_nonce.isk_hdr_generic.isagen_length) - (sizeof(struct isakmp_generic_payload)));
+				//next_payload = ntohs(isk_nonce.isk_hdr_generic.isagen_np);
+				next_payload = 0;
+			break;
+
+
+		}		
+
+
+	}
 
 
 printf("initialize MM_R2_state \n");
 
-
+return NULL;
 }
 
 
@@ -506,8 +546,8 @@ unsigned char * processPacket(unsigned char *data, int size){
 					
 					case MM_R2:
 						printf("MM_R2\n");
-						MM_R2_state();
-						return NULL;
+						result = MM_R2_state(data,size,isk_hdr);
+						return result;
 					
 					break;
 					
@@ -540,6 +580,7 @@ unsigned char * processPacket(unsigned char *data, int size){
 		//if initiator or responder TODO		
 	struct isakmp_peer_info *newPeer =  malloc(sizeof(struct isakmp_peer_info));
 	memcpy(newPeer->CKY_I,isk_hdr.isa_icookie,8);
+	memcpy(newPeer->CKY_R,isk_hdr.isa_rcookie,8);
 	memcpy(newPeer->CKY_R,isk_hdr.isa_rcookie,8);
 	
 	STAILQ_INSERT_TAIL(&peer_head, newPeer, pointers);

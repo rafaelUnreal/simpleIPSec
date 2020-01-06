@@ -1,13 +1,15 @@
 #include <stdio.h>
 #include <openssl/dh.h>
 
-int main(){
+char * calculateSharedSecret(const char *privateKey, const char *pubNonce){
 DH *dh;
 int codes;
 int secret_size;
 
 const char * dhgroup2 = "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381FFFFFFFFFFFFFFFF";
-const char* userA_PrivateKey = "75BCD15";
+
+//hex equivalent to 123456
+const char* userA_PrivateKey = "1E240";
 
 void handleErrors(){
 
@@ -30,6 +32,8 @@ if(NULL == (dh = DH_new())) handleErrors();
 
 /* Generate the public and private key pair */
 
+
+
 BN_dec2bn(&dh->g, "2");
 BN_hex2bn(&dh->p, dhgroup2 );
 BN_hex2bn(&dh->priv_key, userA_PrivateKey);
@@ -42,7 +46,7 @@ BN_hex2bn(&dh->priv_key, userA_PrivateKey);
 
 /* Receive the public key from the peer. In this example we're just hard coding a value */
 BIGNUM *pubkey = NULL;
-if(0 == (BN_dec2bn(&pubkey, "01234567890123456789012345678901234567890123456789"))) handleErrors();
+if(0 == (BN_dec2bn(&pubkey, pubNonce))) handleErrors();
 
 /* Compute the shared secret */
 unsigned char *secret;
@@ -69,4 +73,6 @@ i++;
 OPENSSL_free(secret);
 BN_free(pubkey);
 DH_free(dh);
+
+return secret;
 }

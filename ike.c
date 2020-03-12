@@ -511,6 +511,7 @@ void startIpsec(){
         **Note**: that sin_zero (which is included to pad the structure to the length of a struct sockaddr) 
           should be set to all zeros with the function memset().
      */
+	printf("test\n");
     struct sockaddr_in si_me, si_other;
 
     int s, slen = sizeof(si_other) , recv_len;
@@ -616,6 +617,7 @@ void startIpsec(){
 
 int main(void)
 {
+	printf("start\n");
 	startIpsec();
     return 0;
 }

@@ -244,12 +244,13 @@ struct packet* MM_R1_state(struct packet *p,struct isakmp_hdr isk_hdr){
 					isk_attp = calloc(0,sizeof(struct isakmp_attribute_node));      /* Insert at the head. */
 					decodeIsakmpAttribute(p,&(isk_attp->isk_att));
 					STAILQ_INSERT_TAIL(&head, isk_attp, pointers);
+					//TODO CONFIGURE IF IKE ATTRIBUTE IS TYPE/LENGHT/VALUE instead of only TYPE/VALUE
 					numAtt+=4; // Size of basic IKE attribute
 				//printf("segmentation 3\n");
 				}; 
 				state = MM_R1;
 				//TEST
-				p->index = p->index + 36;
+				p->index = p->index + isk_trans.isat_length;
 				next_payload = 0;
 				
 			break;
@@ -511,7 +512,6 @@ void startIpsec(){
         **Note**: that sin_zero (which is included to pad the structure to the length of a struct sockaddr) 
           should be set to all zeros with the function memset().
      */
-	printf("test\n");
     struct sockaddr_in si_me, si_other;
 
     int s, slen = sizeof(si_other) , recv_len;
@@ -617,7 +617,7 @@ void startIpsec(){
 
 int main(void)
 {
-	printf("start\n");
+	printf("Simple IPsec by Rafael P.\n");
 	startIpsec();
     return 0;
 }

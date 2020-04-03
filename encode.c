@@ -186,6 +186,20 @@ void encodeIsakmpHeader(struct packet *p, struct isakmp_hdr *isa)
 		
 	}	
 }
+void encodeIsakmpGeneric(struct packet *p, struct isakmp_generic_payload *isa)
+{
+	u_int16_t size;
+	u_int16_t i;
+	size = sizeof(encoding_isakmp_generic) / sizeof(encoding_isakmp_generic[0]); 
+	
+	for(i=0; i < size; i++){
+		//printf("offset of %d \n" ,  encodings[i].offset);
+		//printf("isa length: %d \n", isa->isa_length);
+		encodeFields(p,encoding_isakmp_generic[i].type, encoding_isakmp_generic[i].offset, isa);
+		
+	}	
+}
+
 
 void encodeIsakmpProposal(struct packet *p, struct isakmp_proposal *isa)
 {
@@ -242,6 +256,14 @@ void encodeIsakmpAttribute(struct packet *p, struct isakmp_attribute *isa)
 		
 	}	
 }
+
+void encodeChunk(struct packet *p, unsigned char *chunkData, u_int16_t size)
+{
+		memcpy(&(p->data[p->index]), chunkData , size);
+		p->index = p->index + size;		
+
+}
+
 
 void decodeFields(struct packet *p, int field, u_int32_t offset, void *s ){
 	
@@ -336,6 +358,30 @@ void decodeIsakmpProposal(struct packet *p, struct isakmp_proposal *isa)
 		
 	}	
 }
+
+void decodeIsakmpGeneric(struct packet *p, struct isakmp_generic_payload *isa)
+{
+	u_int16_t size;
+	u_int16_t i;
+	size = sizeof(encoding_isakmp_generic) / sizeof(encoding_isakmp_generic[0]); 
+	
+	for(i=0; i < size; i++){
+		//printf("offset of %d \n" ,  encodings[i].offset);
+		//printf("isa length: %d \n", isa->isa_length);
+		decodeFields(p,encoding_isakmp_generic[i].type, encoding_isakmp_generic[i].offset, isa);
+		
+	}	
+}
+
+void decodeChunk(struct packet *p, unsigned char *chunkData, u_int16_t size)
+{
+		memcpy(chunkData, &(p->data[p->index]), size);
+		p->index = p->index + size;		
+
+}
+
+
+
 
 void decodeIsakmpTransform(struct packet *p, struct isakmp_transform *isa)
 {

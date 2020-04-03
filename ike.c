@@ -271,9 +271,12 @@ struct packet* MM_R1_state(struct packet *p,struct isakmp_hdr isk_hdr){
 	
 	else{
 		memcpy(node_t->CKY_R, "\x11\x11\x11\x11\x11\x11\x11\x11",8) ;
-		
+		memcpy(node_t->CKY_I, isk_hdr.isa_icookie,8);
 		printf("Responder SPI \n");
 		printPayload(node_t->CKY_R,8);
+		printf("Iniatiator SPI \n");
+		printPayload(node_t->CKY_I,8);
+		printf("\n");
 	}
 	
 	struct isakmp_attribute_node *n;
@@ -377,10 +380,12 @@ struct packet* MM_R1_state(struct packet *p,struct isakmp_hdr isk_hdr){
 
 }
 
-struct packet *MM_R2_state(struct packet *p,struct isakmp_hdr isk_hdr){
-/*
+struct packet *MM_R2_state(struct packet *p,struct isakmp_hdr isk_hdr, struct isakmp_peer_info *node){
+
 	struct isakmp_nonce isk_nonce;
 	struct isakmp_key_exchange isk_keyex;
+	u_int16_t nonceSize=0;
+	u_int16_t pubKeySize=0;
 	
 	unsigned int next_payload;
 	next_payload = isk_hdr.isa_np;
@@ -390,27 +395,30 @@ struct packet *MM_R2_state(struct packet *p,struct isakmp_hdr isk_hdr){
 		switch(next_payload){
 
 			case KE:
-				memcpy((unsigned char*)&isk_keyex.isk_hdr_generic,data+(sizeof(struct isakmp_hdr)),sizeof(struct isakmp_generic_payload));
-				isk_keyex.isakey_data = (unsigned char *) malloc(ntohs(isk_keyex.isk_hdr_generic.isagen_length) - (sizeof(struct isakmp_generic_payload)));
-				
-				memcpy((unsigned char*)isk_keyex.isakey_data,data+(sizeof(struct isakmp_hdr))+(sizeof(struct isakmp_generic_payload)), ntohs(isk_keyex.isk_hdr_generic.isagen_length) - (sizeof(struct isakmp_generic_payload)));
-				printf("\n");
+	
+				decodeIsakmpGeneric(p,&(isk_keyex.isk_hdr_generic));
+				isk_keyex.isakey_data = (unsigned char *) malloc(sizeof(unsigned char) * (isk_keyex.isk_hdr_generic.isagen_length - sizeof(struct isakmp_generic_payload)));
+				//pubKeySize = (isk_keyex.isk_hdr_generic.isagen_length - sizeof(struct isakmp_generic_payload))+1;
+				//isk_keyex.isakey_data[pubKeySize] = '\0';	
+				decodeChunk(p,isk_keyex.isakey_data, (isk_keyex.isk_hdr_generic.isagen_length - sizeof(struct isakmp_generic_payload)));
 				printf("KE :\n");
-				printPayload(isk_keyex.isakey_data, ntohs(isk_keyex.isk_hdr_generic.isagen_length) - (sizeof(struct isakmp_generic_payload)));
-				//
-				next_payload = ntohs(isk_keyex.isk_hdr_generic.isagen_np);
+				printPayload(isk_keyex.isakey_data,  (isk_keyex.isk_hdr_generic.isagen_length - sizeof(struct isakmp_generic_payload)));
+				printf("\n");
+				next_payload = isk_keyex.isk_hdr_generic.isagen_np;
 				state = MM_R2;
 			case NONCE:
-				memcpy((unsigned char*)&isk_nonce.isk_hdr_generic,data+(sizeof(struct isakmp_hdr))+ntohs(isk_keyex.isk_hdr_generic.isagen_length),sizeof(struct isakmp_generic_payload));
-				isk_nonce.isan_data = (unsigned char *) malloc(ntohs(isk_nonce.isk_hdr_generic.isagen_length) - (sizeof(struct isakmp_generic_payload)));
-				
-				memcpy((unsigned char*)isk_nonce.isan_data,data+(sizeof(struct isakmp_hdr))+ntohs(isk_keyex.isk_hdr_generic.isagen_length)+sizeof(struct isakmp_generic_payload), ntohs(isk_nonce.isk_hdr_generic.isagen_length) - (sizeof(struct isakmp_generic_payload)));
-				//memcpy((unsigned char*)&isk_sa,data+(sizeof(isk_hdr)),sizeof(isk_sa));
-				printf("DEBUG NONCE LENGTH %04X\n", ntohs(isk_nonce.isk_hdr_generic.isagen_length));
-				//isk_nonce
+			
+				decodeIsakmpGeneric(p,&(isk_nonce.isk_hdr_generic));
+				isk_nonce.isan_data = (unsigned char *) malloc(sizeof(unsigned char) * (isk_nonce.isk_hdr_generic.isagen_length - sizeof(struct isakmp_generic_payload))+1);
+				nonceSize = (isk_nonce.isk_hdr_generic.isagen_length - sizeof(struct isakmp_generic_payload))+1;
+				isk_nonce.isan_data[nonceSize] = '\0';
+				decodeChunk(p,isk_nonce.isan_data, (isk_nonce.isk_hdr_generic.isagen_length - sizeof(struct isakmp_generic_payload)));
 				printf("NONCE \n");
-				printPayload(isk_nonce.isan_data, ntohs(isk_nonce.isk_hdr_generic.isagen_length) - (sizeof(struct isakmp_generic_payload)));
-				//next_payload = ntohs(isk_nonce.isk_hdr_generic.isagen_np);
+				printPayload(isk_nonce.isan_data,  (isk_nonce.isk_hdr_generic.isagen_length - sizeof(struct isakmp_generic_payload)));
+
+				next_payload = isk_nonce.isk_hdr_generic.isagen_np;
+				state = MM_R2;
+		
 				next_payload = 0;
 			break;
 
@@ -419,11 +427,147 @@ struct packet *MM_R2_state(struct packet *p,struct isakmp_hdr isk_hdr){
 
 
 	}
-*/
 
+printf("\n");
 printf("initialize MM_R2_state \n");
 
-return NULL;
+struct packet *MM_R2_response_packet = malloc(sizeof(struct packet));
+	
+u_int32_t  total_length = 0;
+u_int16_t  length = 0;
+
+//calculateSharedSecret(isk_keyex.isakey_data);
+initiateDH();
+
+//RESPONSE
+
+struct isakmp_hdr isk_hdr_response;
+struct isakmp_nonce isk_nonce_response;
+struct isakmp_key_exchange isk_keyex_response;
+
+isk_keyex_response.isakey_data = (unsigned char *) malloc(sizeof(unsigned char) * (isk_keyex.isk_hdr_generic.isagen_length - sizeof(struct isakmp_generic_payload)));
+
+isk_nonce_response.isan_data = (unsigned char *) malloc(16);
+memcpy(isk_nonce_response.isan_data, "\x42\xec\xee\x52\xf0\x42\x12\x2b\x9a\xfc\xaf\xa3\x96\xfc\x3f\xb1",16);
+getPublicKey(isk_keyex_response.isakey_data);
+//printf("print payload \n");
+//printPayload(isk_keyex_response.isakey_data,128);
+
+
+
+//Calculate keying material:
+	
+int secret_size = 0;
+//PPRESHARED KEY STATIC ALLOCATED FOR TEST PURPOSES
+node->preshared_key = malloc(3);
+memcpy(node->preshared_key,"\x31\x32\x33", 3);
+node->gxy = calculateSharedSecret(isk_keyex.isakey_data,&secret_size);
+
+
+// SKEYID = prf(pre-shared-key, Ni_b | Nr_b)
+unsigned char *dataConcat = malloc(32); // size of two nonces concatenated
+memcpy(dataConcat,isk_nonce.isan_data,16);
+memcpy(dataConcat+16,isk_nonce_response.isan_data,16);
+node->SKEYID = calculateHmacSha1(node->preshared_key,3,dataConcat,32);
+
+// SKEYID_d = prf(SKEYID, g^xy | CKY-I | CKY-R | 0)
+unsigned char *dataConcat2 = malloc(secret_size+17);
+memcpy(dataConcat2,node->gxy,secret_size);
+memcpy(dataConcat2+secret_size,node->CKY_I,8);
+memcpy(dataConcat2+secret_size+8,node->CKY_R,8);
+memcpy(dataConcat2+secret_size+16,"\x0",1);
+node->SKEYID_d = calculateHmacSha1(node->SKEYID,20,dataConcat2,secret_size+17);
+
+//   SKEYID_a = prf(SKEYID, SKEYID_d | g^xy | CKY-I | CKY-R | 1)
+unsigned char *dataConcat3 = malloc(secret_size+37);
+memcpy(dataConcat3,node->SKEYID_d,20);
+memcpy(dataConcat3+20,node->gxy,secret_size);
+memcpy(dataConcat3+secret_size+20,node->CKY_I,8);
+memcpy(dataConcat3+secret_size+28,node->CKY_R,8);
+memcpy(dataConcat3+secret_size+36,"\x1",1);
+node->SKEYID_a = calculateHmacSha1(node->SKEYID,20,dataConcat3,secret_size+37);
+
+//   SKEYID_e = prf(SKEYID, SKEYID_a | g^xy | CKY-I | CKY-R | 2)
+unsigned char *dataConcat4 = malloc(secret_size+37);
+memcpy(dataConcat4,node->SKEYID_a,20);
+memcpy(dataConcat4+20,node->gxy,secret_size);
+memcpy(dataConcat4+secret_size+20,node->CKY_I,8);
+memcpy(dataConcat4+secret_size+28,node->CKY_R,8);
+memcpy(dataConcat4+secret_size+36,"\x2",1);
+node->SKEYID_e = calculateHmacSha1(node->SKEYID,20,dataConcat4,secret_size+37);
+
+printf("SKEYID \n");
+printPayload(node->SKEYID, 20);
+printf("\n");
+
+printf("SKEYID_d	 \n");
+printPayload(node->SKEYID_d, 20);
+printf("\n");
+
+printf("SKEYID_a	 \n");
+printPayload(node->SKEYID_a, 20);
+printf("\n");
+
+printf("SKEYID_e	 \n");
+printPayload(node->SKEYID_e, 20);
+printf("\n");
+
+
+//printf("shared secret size (MM_R2_state) %d\n", secret_size);
+//printPayload(node->gxy,secret_size);
+
+total_length = (sizeof(struct isakmp_hdr) + sizeof(struct isakmp_generic_payload) + sizeof(struct isakmp_generic_payload) + 128 + 16); 
+
+printf("total length= %d \n", total_length);
+
+MM_R2_response_packet->data = malloc(sizeof(unsigned char)*total_length);
+
+	MM_R2_response_packet->size=total_length;
+	MM_R2_response_packet->index=0;
+
+	memcpy(isk_hdr_response.isa_icookie, isk_hdr.isa_icookie, sizeof(u_int8_t) * 8);
+	memcpy(isk_hdr_response.isa_rcookie, "\x11\x11\x11\x11\x11\x11\x11\x11", 8);
+	
+	isk_hdr_response.isa_np = isk_hdr.isa_np;
+	isk_hdr_response.isa_version = isk_hdr.isa_version;
+	isk_hdr_response.isa_xchg = isk_hdr.isa_xchg;
+	isk_hdr_response.isa_flags = isk_hdr.isa_flags;
+	isk_hdr_response.isa_msgid = isk_hdr.isa_msgid;
+	isk_hdr_response.isa_length = total_length;
+	
+
+	printf("encode isakmp header \n");
+	encodeIsakmpHeader(MM_R2_response_packet,&isk_hdr_response);
+	printf("Print ISAKMP \n");
+	printPayload(MM_R2_response_packet->data, MM_R2_response_packet->size);	
+	printf("\n");
+	
+	isk_keyex_response.isk_hdr_generic.isagen_np = isk_keyex.isk_hdr_generic.isagen_np;
+	isk_keyex_response.isk_hdr_generic.isagen_reserved = isk_keyex.isk_hdr_generic.isagen_reserved;
+	isk_keyex_response.isk_hdr_generic.isagen_length = isk_keyex.isk_hdr_generic.isagen_length;
+	
+	printf("encode isakmp generic \n");
+	encodeIsakmpGeneric(MM_R2_response_packet,&isk_keyex.isk_hdr_generic);
+	printf("encode chunk  \n");
+	encodeChunk(MM_R2_response_packet,isk_keyex_response.isakey_data, 128);
+	
+	isk_nonce_response.isk_hdr_generic.isagen_np = isk_nonce.isk_hdr_generic.isagen_np;
+	isk_nonce_response.isk_hdr_generic.isagen_reserved = isk_nonce.isk_hdr_generic.isagen_reserved;
+	isk_nonce_response.isk_hdr_generic.isagen_length = isk_nonce.isk_hdr_generic.isagen_length;
+	
+	encodeIsakmpGeneric(MM_R2_response_packet,&isk_nonce.isk_hdr_generic);
+	encodeChunk(MM_R2_response_packet,isk_nonce_response.isan_data, 16);
+
+	
+
+
+	node->state = MM_R3;
+
+	printf("Print response \n");
+	printPayload(MM_R2_response_packet->data, MM_R2_response_packet->size);	
+	printf("\n");
+	return MM_R2_response_packet;
+
 }
 
 
@@ -441,20 +585,20 @@ struct packet* processPacket(struct packet *p, u_int16_t size){
 	STAILQ_FOREACH(node, &peer_head, pointers) {
 
 			if(strncmp(node->CKY_I,isk_hdr.isa_icookie,8) == 0 && strncmp(node->CKY_R,isk_hdr.isa_rcookie,8) == 0 ){
-				// IF EXIST SEND TO RIGHT STATE
+				// IF EXIST SEND TO THE CORRECT STATE
 			
 				switch(node->state){
 
 					
 					case MM_R2:
 						printf("MM_R2\n");
-						result = MM_R2_state(p,isk_hdr);
+						result = MM_R2_state(p,isk_hdr,node);
 						return result;
 					
 					break;
 					
 					case MM_R3:
-					
+						printf("MM_R3\n");
 					break;
 					
 					

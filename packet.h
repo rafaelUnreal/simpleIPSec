@@ -3,17 +3,27 @@
 #define PACKET_H
 
 // Default parameters for isakmp attributes
+#define	AES_CBC_128	1
+#define	SHA_1	2
+#define PRE_SHARED_KEY	3
+#define DH2	4
+#define ISAKMP_HDR_SIZE	28
 
-#define AES-CBC-128 1
-#define SHA-1 2
-#define PRE-SHARED-KEY 3
-#define DH2 4
+
+// OFFSETS:
+
+#define ISAKMP_HDR_OFFSET	0
+#define SA_OFFSET	28
+#define PROPOSAL_OFFSET	40
+#define TRANSFORM_OFFSET	48
+#define ATTRIBUTE_OFFSET	56
 
 // Generic Buffer Packet Struct
 struct packet 
 {
 	unsigned char * data;
 	u_int16_t index;
+	u_int16_t data_size;
 	u_int16_t size;
 
 };
@@ -94,8 +104,29 @@ struct isakmp_key_exchange
     unsigned char *isakey_data;
 };
 
+struct _isakmp_ipsec_id
+{
+    u_int8_t    isaiid_np;
+    u_int8_t    isaiid_reserved;
+    u_int16_t   isaiid_length;
+    u_int8_t    isaiid_idtype;
+    u_int8_t    isaiid_protoid;
+    u_int16_t   isaiid_port;
+};
+
+struct isakmp_ipsec_id
+{
+    struct _isakmp_ipsec_id isk_ipsec_id;
+    unsigned char *id_data;
+};
 
 
+
+struct isakmp_hash
+{
+    struct isakmp_generic_payload isk_hdr_generic;
+    unsigned char *hash_data;
+};
 
 
 

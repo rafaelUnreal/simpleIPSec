@@ -76,6 +76,7 @@ BIO_dump_fp(stdout, secret, (*secret_size) );
 return secret;
 }
 
+//TODO function should not perform MALLOC here; it's not best practice
 unsigned char *calculateHmacSha1(unsigned char *key, int key_len, unsigned char *data,int  data_len){
 	
 	unsigned char *digest = malloc(20);

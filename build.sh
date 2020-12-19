@@ -1,4 +1,3 @@
 #!/bin/bash
 
-gcc encode.c ike.c serialize.c dh.c -l crypto -g
-
+gcc ike.c config.c encode.c serialize.c dh.c crypto.c -l crypto -l config -g -DDEBUG -o startIpsec

@@ -8,8 +8,6 @@
 #include "packet.h"
 #include "serialize.h"
 
-
-
 #define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
 #define BYTE_TO_BINARY(byte)  \
   (byte & 0x80 ? '1' : '0'), \
@@ -82,6 +80,19 @@ static struct enconding_rule encoding_isakmp_proposal[] = {
 
 };
 
+
+static struct enconding_rule encoding_isakmp_id[] = {
+	
+	{ U_INT_8,		offsetof(struct _isakmp_ipsec_id, isaiid_np)	},
+	{ U_INT_8,		offsetof(struct _isakmp_ipsec_id, isaiid_reserved)	},
+	{ U_INT_16,		offsetof(struct _isakmp_ipsec_id, isaiid_length)	},
+	{ U_INT_8,		offsetof(struct _isakmp_ipsec_id, isaiid_idtype)		},
+	{ U_INT_8,		offsetof(struct _isakmp_ipsec_id, isaiid_protoid)		},
+	{ U_INT_16,		offsetof(struct _isakmp_ipsec_id, isaiid_port)	}
+
+
+};
+
 static struct enconding_rule encoding_isakmp_transform[] = {
 	
 	{ U_INT_8,		offsetof(struct isakmp_transform, isat_np)	},
@@ -119,7 +130,7 @@ void encodeFields(struct packet *p, int field, u_int32_t offset, void *s ){
 	case U_INT_8:
 		p->data[p->index] = byteArray[offset];
 		p->index = p->index + 1;
-		//p->size = p->size + 1;
+		p->data_size = p->data_size + 1;
 	
 	break;
 	
@@ -132,7 +143,7 @@ void encodeFields(struct packet *p, int field, u_int32_t offset, void *s ){
 		//printf("pdata1 ENCODE 2: %02X\n" ,p->data [p->index+1]);
 		p->index = p->index + 2;
 
-		//p->size = p->size + 2;
+		p->data_size = p->data_size + 2;
 	break;
 	case U_INT_32:
 	
@@ -145,7 +156,7 @@ void encodeFields(struct packet *p, int field, u_int32_t offset, void *s ){
 	//printf( " ALL BYTES %d \n", *(u_int32_t *)&byteArray[offset]);
 		packi32( &(p->data[p->index]), *(u_int32_t *)&byteArray[offset]);
 		p->index = p->index + 4;
-		//p->size = p->size + 4;
+		p->data_size = p->data_size + 4;
 	break;
 	
 	case U_INT_64:
@@ -159,7 +170,7 @@ void encodeFields(struct packet *p, int field, u_int32_t offset, void *s ){
 	//printf( " ALL BYTES %d \n", *(u_int32_t *)&byteArray[offset]);
 		packi64( &(p->data[p->index]), *(u_int64_t *)&byteArray[offset]);
 		p->index = p->index + 8;
-		//p->size = p->size + 8;
+		p->data_size = p->data_size + 8;
 	
 	break;
 	
@@ -168,6 +179,7 @@ void encodeFields(struct packet *p, int field, u_int32_t offset, void *s ){
 			p->data[p->index+i] =  byteArray[offset+i];
 		}
 		p->index = p->index + 8;
+		p->data_size = p->data_size + 8;
 	break;
 		
 	}	
@@ -257,11 +269,27 @@ void encodeIsakmpAttribute(struct packet *p, struct isakmp_attribute *isa)
 	}	
 }
 
+
+void encodeIsakmpId(struct packet *p, struct _isakmp_ipsec_id *isa)
+{
+	u_int16_t size;
+	u_int16_t i;
+	size = sizeof(encoding_isakmp_id) / sizeof(encoding_isakmp_id[0]); 
+	
+	for(i=0; i < size; i++){
+
+		encodeFields(p,encoding_isakmp_id[i].type, encoding_isakmp_id[i].offset, isa);
+		
+	}	
+}
+
+
+
 void encodeChunk(struct packet *p, unsigned char *chunkData, u_int16_t size)
 {
 		memcpy(&(p->data[p->index]), chunkData , size);
 		p->index = p->index + size;		
-
+		p->data_size = p->data_size + size;
 }
 
 
@@ -402,7 +430,6 @@ void decodeIsakmpAttribute(struct packet *p, struct isakmp_attribute *isa)
 	u_int16_t size;
 	u_int16_t i;
 	size = sizeof(encoding_isakmp_attribute) / sizeof(encoding_isakmp_attribute[0]); 
-	printf("size %d\n",size);
 	for(i=0; i < size; i++){
 		//printf("offset of %d \n" ,   encoding_isakmp_attribute[i].offset);
 		//printf("isa length: %d \n", isa->isa_length);
@@ -410,79 +437,18 @@ void decodeIsakmpAttribute(struct packet *p, struct isakmp_attribute *isa)
 		
 	}	
 }
-/*
-int main(){
-	
-	struct packet p;
-	struct isakmp_hdr hdr;
-	struct isakmp_attribute isk_att = {0};
-	struct isakmp_attribute isk_att_2 = {0};
-	memset(&hdr, 0, sizeof(struct isakmp_hdr));
-	memcpy(&(hdr.isa_icookie), "\x11\x11\x11\x11\x11\x11\x11\x11",8);
-	hdr.isa_version = 16;
-	hdr.isa_np = 1;
-	hdr.isa_length = 84;
-	p.data = malloc(sizeof(unsigned char) * 1000);
-	p.index = 0;
-	p.size = 0;
-	
-	struct isakmp_transform ist_t = {0};
-	isk_att.isaat_af_type  = 32779;
-    isk_att.isaat_lv = 1;
-	//encodeIsakmpHeader(&p,&hdr);
-	encodeIsakmpAttribute(&p,&isk_att);
-	
-	int i = 0;
-	//printf("index %d\n",p.index);
-	//printf("Encoded Struct into Packet:\n");
-//	for(i=0; i<p.index; i++){
-	//	printf(" %02X" ,(u_int16_t) p.data[i]);
-		
-	//}
-	
-	//printf("pdata0: %02X\n" , p.data[0]);
-	//printf("pdata1: %02X\n" , p.data[1]);
-	//printf("pdata2: %02X\n" , p.data[2]);
-	//printf("pdata3: %02X\n" , p.data[3]);
-	//printf("\n");
-	//printf("htons: %02X" ,(u_int16_t)isk_att.isaat_af_type);
-	//printf("htons: %02X" ,(u_int16_t)isk_att.isaat_lv);
-	//printf("\n");
-	//printf("SIZE %d\n", p.size);
-	
-	//struct isakmp_transform *isk_decoded;
-	//isk_decoded = (struct isakmp_transform *) malloc(sizeof(struct isakmp_transform));
-	p.index = 0;
-	decodeIsakmpAttribute(&p, &isk_att_2);
-	printf("\n");
-	printf("DECODED: %02X\n" ,(u_int16_t)isk_att_2.isaat_af_type);
-	//printf("sizeof: %02X\n" ,sizeof(isk_att_2.isaat_af_type));
-	printf("DECODED: %02X\n" ,(u_int16_t)isk_att_2.isaat_lv);
-	//printf("Sizeof: %02X\n" , sizeof(isk_att_2.isaat_lv));
-	//printf("sizeof struct: %02X\n" ,sizeof(struct isakmp_attribute));
-	/*
-	struct isakmp_hdr *isk_decoded;
-	isk_decoded = (struct isakmp_hdr *) malloc(sizeof(struct isakmp_hdr));
-	p.index = 0;
-	decodeIsakmpHeader(&p, isk_decoded);
-	printf("Decode Packet into struct :\n");
-	printf("Length :  %d\n", (u_int8_t) isk_decoded->isa_length);
-	printf("Version :  %02X\n", isk_decoded->isa_version);
-	printf("Np :  %02X\n", isk_decoded->isa_np);
-	
-	printf("\n");
-	
-	p.index = 0;
-	decodeIsakmpTransform(&p, isk_decoded);
-	printf("Decode Packet into struct :\n");
-	printf("Length :  %d\n", isk_decoded->isat_length);
-	printf("Np :  %02X\n", isk_decoded->isat_np);
-	
-	printf("\n");
 
-	
-	
+void decodeIsakmpId(struct packet *p, struct _isakmp_ipsec_id *isa)
+{
+	u_int16_t size;
+	u_int16_t i;
+	size = sizeof(encoding_isakmp_id) / sizeof(encoding_isakmp_id[0]); 
+	for(i=0; i < size; i++){
+		//printf("offset of %d \n" ,   encoding_isakmp_id[i].offset);
+		//printf("isa length: %d \n", isa->isaiid_length);
+		decodeFields(p,encoding_isakmp_id[i].type, encoding_isakmp_id[i].offset, isa);
+		
+	}	
 }
-	
-*/
+
 

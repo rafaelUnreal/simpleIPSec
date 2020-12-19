@@ -18,6 +18,39 @@
 #define TRANSFORM_OFFSET	48
 #define ATTRIBUTE_OFFSET	56
 
+
+#define BUFLEN 65536 // max buffer length
+#define PORT 500    // hardcoded port
+
+#define SA_ID     	 1
+#define SA_PROP_ID 	 2
+#define TRANS_ID 	 3
+#define KE  		 4
+#define ID		 	 5
+#define HASH		 8
+#define NONCE 	 	 10
+#define VENDOR_ID 	 55
+
+/* IKEv1 Main Mode states */
+#define NO_STATE  0
+#define MM_R1  1
+#define MM_R2  2
+#define MM_R3  3
+#define MM_I1  4
+#define MM_I2  5
+#define MM_I3  6
+
+/* IKEv2 Quick Mode states */
+#define QM_R1  7
+#define QM_R2  8
+#define QM_I1  9
+#define QM_I2  10
+
+/* Some fixed size field of ISAKMP header in bytes */
+#define ISAKMP_COOKIE_SIZE 8
+#define ISAKMP_ID_HDR	8
+
+
 // Generic Buffer Packet Struct
 struct packet 
 {

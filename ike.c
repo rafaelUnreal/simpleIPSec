@@ -38,19 +38,30 @@ struct packet * initializePacket(struct packet *buf, u_int32_t size) {
 }
 
 
+struct isakmp_sa_node {
+	struct isakmp_sa isk_sa;
+	STAILQ_ENTRY(isakmp_sa_node) pointers;
+};
+
+struct isakmp_proposal_node {
+	struct isakmp_proposal isk_prop;
+	STAILQ_ENTRY(isakmp_proposal_node) pointers;
+};
+
+struct isakmp_transform_node {
+	struct isakmp_transform isk_trans;
+	STAILQ_ENTRY(isakmp_transform_node) pointers;
+};
+
+struct isakmp_attribute_node2 {
+	struct isakmp_attribute isk_att;
+	LIST_ENTRY(isakmp_attribute_node2) pointers;
+};
 
 struct isakmp_attribute_node {
 	struct isakmp_attribute isk_att;
 	STAILQ_ENTRY(isakmp_attribute_node) pointers;
 };
-
-/* 
-Mandatory supported SA payload types:
-	- encryption algorithm
-	- hash algorithm
-	- authentication method
-	- information about a group over which to do Diffie-Hellman.
-*/
 
 struct isakmp_crypto_policy {
 
@@ -99,8 +110,10 @@ struct isakmp_peer_info {
 	unsigned int key_len; //in bytes
 	unsigned int dh_group;
 	unsigned int dh_group_size; // in bytes
+	
+	LIST_HEAD(isakmp_attribute_cfg_list, isakmp_attribute_node2) ike_attributes_head;
 
-	 STAILQ_ENTRY(isakmp_peer_info) pointers;
+	STAILQ_ENTRY(isakmp_peer_info) pointers;
 
 
 };
@@ -108,10 +121,13 @@ struct isakmp_peer_info {
 
 /* Queue and lists are initialized here */
 
+
+/* List of ISAKMP attributes received by the peer */
+STAILQ_HEAD(isakmp_attribute_list, isakmp_attribute_node) ike_attributes_head = STAILQ_HEAD_INITIALIZER(ike_attributes_head);
+
 /* Main list of nodes */
-STAILQ_HEAD(isakmp_attribute_list, isakmp_attribute_node) head = STAILQ_HEAD_INITIALIZER(head);
-/* List of ISAKMP attributes */
-STAILQ_HEAD(isakmp_peer_list, isakm_peer_info) peer_head = STAILQ_HEAD_INITIALIZER(peer_head);
+STAILQ_HEAD(isakmp_peer_list, isakmp_peer_info) peer_head = STAILQ_HEAD_INITIALIZER(peer_head);
+
 /* List of crypto(Phase 1) policies *TODO: Still to be implemented* */
 STAILQ_HEAD(isakmp_crypto_policy_list, isakmp_crypto_policy) crypto_policy_head = STAILQ_HEAD_INITIALIZER(crypto_policy_head);
 
@@ -191,7 +207,7 @@ struct packet* MM_R1_state(struct packet *p,struct isakmp_hdr isk_hdr){
 	unsigned int next_prop_payload;
 	unsigned int next_trans_payload;
 	unsigned int numAtt;
-	int i;
+	int payloadNumber,proposalNumber,transformNumber,ikeNumber,payloadType;
 	
 	next_payload = isk_hdr.isa_np;
 	position = sizeof(isk_hdr);
@@ -216,7 +232,7 @@ struct packet* MM_R1_state(struct packet *p,struct isakmp_hdr isk_hdr){
 				
 					isk_attp = calloc(0,sizeof(struct isakmp_attribute_node));     
 					decodeIsakmpAttribute(p,&(isk_attp->isk_att));
-					STAILQ_INSERT_TAIL(&head, isk_attp, pointers);
+					STAILQ_INSERT_TAIL(&ike_attributes_head, isk_attp, pointers);
 					numAtt= numAtt+sizeof(struct isakmp_attribute);
 				}; 
 				state = MM_R1;
@@ -241,7 +257,7 @@ struct packet* MM_R1_state(struct packet *p,struct isakmp_hdr isk_hdr){
 	u_int16_t  length = 0;
 
 	/* Proposal reflector: simply copying all information back to initiator */
-	STAILQ_FOREACH(n, &head, pointers) { ike_att_length = ike_att_length + (sizeof(struct isakmp_attribute)); }
+	STAILQ_FOREACH(n, &ike_attributes_head, pointers) { ike_att_length = ike_att_length + (sizeof(struct isakmp_attribute)); }
 
 	total_length = (sizeof(struct isakmp_hdr) + sizeof(struct isakmp_sa) + sizeof(struct isakmp_proposal) + sizeof(struct isakmp_transform) + ike_att_length); 
 	
@@ -251,57 +267,63 @@ struct packet* MM_R1_state(struct packet *p,struct isakmp_hdr isk_hdr){
 	MM_R1_response_packet->index=0;
 	
 	/* Response Packet details for MM_R1 */
-	struct isakmp_hdr isk_hdr_response;
-	struct isakmp_sa isk_sa_response;
-	struct isakmp_proposal isk_prop_response;
-	struct isakmp_transform isk_trans_response;
-	struct isakmp_attribute isk_att_response;
+	struct isakmp_hdr isk_hdr_response = {0};;
+	struct isakmp_sa isk_sa_response = {0};
+	struct isakmp_proposal isk_prop_response = {0};
+	struct isakmp_transform isk_trans_response = {0};
+	struct isakmp_attribute isk_att_response = {0};
 	
-	/* ISAKMP header */
-	
-	configSetIsakmpHdrResponseMM1(&isk_hdr_response,isk_hdr);
-	
+
 	//Adding cookie details to node list
 	memcpy(node_t->CKY_R, isk_hdr_response.isa_rcookie,ISAKMP_COOKIE_SIZE) ;
 	memcpy(node_t->CKY_I, isk_hdr.isa_icookie,ISAKMP_COOKIE_SIZE);
+	
+	LIST_INIT(&(node_t->ike_attributes_head));
 
-
+	/* ISAKMP header */
+	configSetIsakmpHdrResponseMM1(&isk_hdr_response,isk_hdr);
 	
-	/* ISAKMP security association */
-	isk_sa_response.isasa_np = 0;
-	isk_sa_response.isasa_reserved = isk_sa.isasa_reserved;
-	length = ((total_length) - sizeof(isk_hdr));
-	isk_sa_response.isasa_length = length;
-	isk_sa_response.isasa_doi = isk_sa.isasa_doi;
-	isk_sa_response.isasa_situation = isk_sa.isasa_situation;
-	
-	/* ISAKMP proposal */
-	isk_prop_response.isap_np = isk_prop.isap_np;
-	isk_prop_response.isap_reserved = isk_prop.isap_reserved;
-	length = ((total_length) - sizeof(isk_hdr) - sizeof(isk_sa));
-	isk_prop_response.isap_length = length;
-	isk_prop_response.isap_proposal = isk_prop.isap_proposal;
-	isk_prop_response.isap_protoid = isk_prop.isap_protoid;
-	isk_prop_response.isap_spisize = isk_prop.isap_spisize;
-	isk_prop_response.isap_notrans = 1;
-	
-	/* ISAKMP transforms */
-	isk_trans_response.isat_np = isk_trans.isat_np;
-	isk_trans_response.isat_reserved = isk_trans.isat_reserved;
-	length = ((total_length) - sizeof(isk_hdr) - sizeof(isk_sa) - sizeof(isk_prop));
-	isk_trans_response.isat_length = length;
-	isk_trans_response.isat_transnum = isk_trans.isat_transnum;
-	isk_trans_response.isat_transid = isk_trans.isat_transid;
-	isk_trans_response.isat_reserved2 = isk_trans.isat_reserved2;
-	
+	for(payloadNumber=0; payloadNumber<getNumPayloads(); ++payloadNumber){
+		
+		payloadType = getPayloadType(payloadNumber);
+		
+		if(payloadType = SA_ID){
+		/* ISAKMP security association */ 	
+		configSetPayloadHdrResponseMM1(payloadNumber,&isk_sa_response,isk_sa);
+		
+			for(proposalNumber=0; proposalNumber<getNumProposals(payloadNumber);++proposalNumber){
+				
+				/* ISAKMP proposals */
+				configSetProposalResponseMM1(payloadNumber,proposalNumber,&isk_prop_response,isk_prop);
+				
+			for(transformNumber=0; transformNumber<getNumTransforms(payloadNumber,proposalNumber); ++transformNumber){
+				
+				/* ISAKMP transforms */
+				configSetTransformResponseMM1(payloadNumber,proposalNumber,transformNumber,&isk_trans_response,isk_trans);
+				
+			for(ikeNumber=0; ikeNumber<getNumIkeAttributes(payloadNumber,proposalNumber,transformNumber);++ikeNumber){
+				printf("IKE number %d\n",ikeNumber);
+				
+				struct isakmp_attribute_node2 *isk_attp2;
+				isk_attp2 = calloc(0,sizeof(struct isakmp_attribute_node2)); 
+				configSetIkeResponseMM1(payloadNumber,proposalNumber,transformNumber,ikeNumber,isk_attp2);
+				LIST_INSERT_HEAD(&(node_t->ike_attributes_head), isk_attp2, pointers);
+			}
+			}
+			}
+		}
+	}
+		
 	/* Skiping header size, to enconde header as last */
     MM_R1_response_packet->index = ISAKMP_HDR_SIZE;
 	
 	encodeIsakmpSa(MM_R1_response_packet,&isk_sa_response);
 	encodeIsakmpProposal(MM_R1_response_packet,&isk_prop_response);
 	encodeIsakmpTransform(MM_R1_response_packet,&isk_trans_response);
-	STAILQ_FOREACH(n, &head, pointers) { encodeIsakmpAttribute(MM_R1_response_packet,&(n->isk_att)); }
-		
+	//IKE attributes
+	//STAILQ_FOREACH(n, &ike_attributes_head, pointers) { encodeIsakmpAttribute(MM_R1_response_packet,&(n->isk_att)); }
+	struct isakmp_attribute_node2 *n2;
+	LIST_FOREACH(n2,&(node_t->ike_attributes_head),pointers) { encodeIsakmpAttribute(MM_R1_response_packet,&(n2->isk_att)); }
 	MM_R1_response_packet->index = 0;
 	isk_hdr_response.isa_length = MM_R1_response_packet->data_size + ISAKMP_HDR_SIZE;
 	encodeIsakmpHeader(MM_R1_response_packet,&isk_hdr_response);
@@ -627,8 +649,7 @@ struct packet* processPacket(struct packet *p, u_int16_t size){
 	STAILQ_FOREACH(node, &peer_head, pointers) {
 
 			if(strncmp(node->CKY_I,isk_hdr.isa_icookie,ISAKMP_COOKIE_SIZE) == 0 && strncmp(node->CKY_R,isk_hdr.isa_rcookie,ISAKMP_COOKIE_SIZE) == 0 ){
-				// IF EXIST SEND TO THE CORRECT STATE
-			
+				
 				switch(node->state){
 
 					
@@ -677,76 +698,33 @@ struct packet* processPacket(struct packet *p, u_int16_t size){
 	
 }
 
-//bool mainMode_inI1(struct isakmp_hdr){
-
-//}
 
 void startIpsec(){
-	
-	
-  /*
-       sockaddr_in is a utility for sockaddr that deals with internet (in) based addresses. The struct looks like:
 
-       struct sockaddr_in {
-           short int          sin_family;  // Address family
-           unsigned short int sin_port;    // Port number
-           struct in_addr     sin_addr;    // Internet address
-           unsigned char      sin_zero[8]; // Same size as struct sockaddr
-        }; 
-
-        **Note**: that sin_zero (which is included to pad the structure to the length of a struct sockaddr) 
-          should be set to all zeros with the function memset().
-     */
     struct sockaddr_in si_me, si_other;
-
     int s, slen = sizeof(si_other) , recv_len;
-	
-    // initialize single linked list of IKE Attributes being received.
-    STAILQ_INIT(&head);
-
-    // buffer to hold packets. If incoming data is > BUFLEN then the bytes will
-    // be dropped.
+    STAILQ_INIT(&ike_attributes_head);
 	unsigned char buf[BUFLEN] = {0};
-	
-	//struct packet to receive all data in buffer
 	struct packet *p;
 	p = calloc(0,sizeof(struct packet));
-
-    // create a UDP socket (SOCK_DGRAM)
     if ((s=socket(AF_INET, SOCK_DGRAM, 0)) == -1)
     {
         die("socket");
     }
 
-    // zero out the structure entire structre.  Alternatively, we could of zero
-    // out just si_me.sin_zero with: memset(&(my_addr.sin_zero), '\0', 8);
     memset((char *) &si_me, 0, sizeof(si_me));
-
-    // Always use AF_INET.  AF_INET is only used by the kernel and doesn't need
-    // to be in network byte order.
     si_me.sin_family = AF_INET;
-    // Convert to proper byte form.
-    // Remember: put your bytes in Network Byte Order before you put them on the network. Be portable!
-    si_me.sin_port = htons(PORT); // setting to 0 would have system pick port.
-    // Use my own port.
-    // Technically this is 0 and doesn't need the call to htonl 
-    // but this will improve portability and most compilers will avoid anyways.
+    si_me.sin_port = htons(PORT); 
     si_me.sin_addr.s_addr = htonl(INADDR_ANY); 
 
-    // bind socket to port
     if( bind(s , (struct sockaddr*)&si_me, sizeof(si_me) ) == -1)
     {
         die("bind");
     }
-
-    // keep listening for data
     while(1)
     {
-        // give user a heads up
+  
         printf("Waiting for data...");
-        //fflush(stdout);
-
-        // try to receive some data, this is a blocking call
         if ((recv_len = recvfrom(s, buf, BUFLEN, 0, (struct sockaddr *) &si_other, &slen)) == -1)
         {
             die("recvfrom()");
@@ -758,19 +736,13 @@ void startIpsec(){
 			p->index = 0;
 			
 		}
-        
-        /*
-         Some machines store their numbers internally in Network Byte Order (Big-Endian Byte Order),
-         some don't.  htons => Host To Network Short. ntohs => Network To Host Short
-        */
+
         printf(
           "Received packet from %s:%d\n", 
-          // network to ascii => prints network binary to dot IP notation
           inet_ntoa(si_other.sin_addr), 
-          // network to host short
           ntohs(si_other.sin_port)
         );
-	//printPayload(buf,recv_len);
+
 	struct packet* result = processPacket(p,p->size);
 	if(result!=NULL){
 
@@ -789,8 +761,6 @@ void startIpsec(){
 int main(void)
 {
 	printf("Simple IPsec by Rafael P.\n");
-	//config parse
-	
 	if(initConfig()){ perror("Config File Error\n"); return 0; }
 	startIpsec();
     return 0;
